@@ -1,0 +1,44 @@
+# Shared async GRPO settings (included as a child config — no hydra.searchpath here).
+defaults:
+  - fully_async_ppo_trainer
+  - user
+  - _self_
+
+max_model_len: 10240
+
+actor_rollout_ref:
+  hybrid_engine: False
+  actor:
+    ppo_mini_batch_size: 8
+  rollout:
+    n: 8
+    mode: async
+    calculate_log_probs: True
+
+algorithm:
+  adv_estimator: grpo
+  norm_adv_by_std_in_grpo: False
+  rollout_correction:
+    rollout_is: token
+    rollout_is_threshold: 2.0
+
+data:
+  train_batch_size: 0
+  gen_batch_size: 1
+
+trainer:
+  n_gpus_per_node: 2
+
+rollout:
+  n_gpus_per_node: 2
+  total_rollout_steps: 3200
+  test_freq: 5
+
+async_training:
+  staleness_threshold: 0.5
+  trigger_parameter_sync_step: 4
+  require_batches: 1
+  partial_rollout: True
+  use_rollout_log_probs: True
+  compute_prox_log_prob: False
+  use_trainer_do_validate: False

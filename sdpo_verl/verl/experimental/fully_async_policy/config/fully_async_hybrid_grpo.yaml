@@ -1,0 +1,15 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - fully_async_baseline_grpo_base
+  - _self_
+
+algorithm:
+  offpolicy_routing:
+    enable: True
+    log_metrics: True
+  sdpo_routing:
+    enable: True
+    mode: far_all

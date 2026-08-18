@@ -1,0 +1,7 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - fully_async_baseline_grpo_base
+  - _self_

@@ -1,0 +1,227 @@
+diff --git a/.gitignore b/.gitignore
+index 4e47423..b95ee34 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -5,7 +5,7 @@ __pycache__/
+ *.egg-info/
+ 
+ # Local data, checkpoints, logs
+-data/
++/data/
+ outputs/
+ checkpoints/
+ swanlog/
+diff --git a/scripts/_run_verl.sh b/scripts/_run_verl.sh
+index 65a7da6..8ba7d0c 100755
+--- a/scripts/_run_verl.sh
++++ b/scripts/_run_verl.sh
+@@ -104,15 +104,6 @@ ROPE_SCALING_ORIGINAL_MAX_POSITION_EMBEDDINGS=$(Y rope_scaling_original_max_posi
+ KL_LOSS_COEF=$(Y kl_loss_coef "")
+ RESUME_DIR=""
+ SWANLAB_RUN_ID_OVERRIDE=""
+-
+-NUM_DP=$((8 / TP))
+-ROLLOUT_BATCH=$((BS * NUM_DP))                    # prompts per rollout
+-ROLLOUT_SAMPLES=$((ROLLOUT_BATCH * GROUP_SIZE))    # samples per rollout
+-
+-# ppo_mini_batch_size: how many samples per optimizer step.
+-# Default = rollout_samples (one update per rollout).
+-# Set smaller in yaml to get multiple updates per rollout.
+-PPO_MINI_BS=$(Y ppo_mini_batch_size ${ROLLOUT_BATCH})
+ # These token budgets are for full sequence length, so they must include prompt + response.
+ TRAIN_MAX_SEQ_LEN=$((MAX_PROMPT + MAX_RESP))
+ VAL_MAX_SEQ_LEN=$((MAX_PROMPT + VAL_MAX_RESP))
+@@ -222,6 +213,12 @@ for arg in "$@"; do
+         val_enable_thinking=*|+val_enable_thinking=*)
+             VAL_ENABLE_THINKING="${arg#*=}"
+             ;;
++        student_enable_thinking=*|+student_enable_thinking=*)
++            STUDENT_ENABLE_THINKING="${arg#*=}"
++            ;;
++        teacher_enable_thinking=*|+teacher_enable_thinking=*)
++            TEACHER_ENABLE_THINKING="${arg#*=}"
++            ;;
+         reward_manager_name=*|+reward_manager_name=*)
+             REWARD_MANAGER_NAME="${arg#*=}"
+             ;;
+@@ -241,12 +238,92 @@ for arg in "$@"; do
+         data.val_files=*)
+             VAL_FILES="${arg#*=}"
+             ;;
++        n_gpus_per_node=*|+n_gpus_per_node=*|trainer.n_gpus_per_node=*)
++            N_GPUS_PER_NODE="${arg#*=}"
++            ;;
++        num_epochs=*|+num_epochs=*)
++            NUM_EPOCHS="${arg#*=}"
++            ;;
++        per_device_batch_size=*|+per_device_batch_size=*)
++            BS="${arg#*=}"
++            ;;
++        group_size=*|+group_size=*)
++            GROUP_SIZE="${arg#*=}"
++            ;;
++        max_completion_length=*|+max_completion_length=*)
++            MAX_RESP="${arg#*=}"
++            ;;
++        eval_steps=*|+eval_steps=*)
++            EVAL_STEPS="${arg#*=}"
++            ;;
++        save_steps=*|+save_steps=*)
++            SAVE_STEPS="${arg#*=}"
++            ;;
++        rlcsd_use_grpo_advantage=*|+rlcsd_use_grpo_advantage=*)
++            RLCSD_USE_GRPO_ADVANTAGE="${arg#*=}"
++            ;;
++        use_swanlab=*|+use_swanlab=*)
++            USE_SWANLAB="${arg#*=}"
++            ;;
++        val_n=*|+val_n=*)
++            VAL_N="${arg#*=}"
++            ;;
++        val_before_train=*|+val_before_train=*)
++            VAL_BEFORE="${arg#*=}"
++            ;;
++        val_max_completion_length=*|+val_max_completion_length=*)
++            VAL_MAX_RESP="${arg#*=}"
++            ;;
++        val_batch_size=*|+val_batch_size=*)
++            VAL_BATCH_SIZE="${arg#*=}"
++            ;;
++        vllm_gpu_memory_utilization=*|+vllm_gpu_memory_utilization=*)
++            GPU_MEM="${arg#*=}"
++            ;;
++        output_dir=*|+output_dir=*)
++            OUTPUT_DIR="${arg#*=}"
++            ;;
++        experiment_name=*|+experiment_name=*)
++            EXPERIMENT_NAME="${arg#*=}"
++            ;;
+         *)
+             HYDRA_ARGS+=("$arg")
+             ;;
+     esac
+ done
+ 
++# Recompute length budgets after CLI overrides (max_completion_length / val_max_completion_length, etc.).
++TRAIN_MAX_SEQ_LEN=$((MAX_PROMPT + MAX_RESP))
++VAL_MAX_SEQ_LEN=$((MAX_PROMPT + VAL_MAX_RESP))
++ROLLOUT_MAX_MODEL_LEN=${TRAIN_MAX_SEQ_LEN}
++if [ "${VAL_MAX_SEQ_LEN}" -gt "${ROLLOUT_MAX_MODEL_LEN}" ]; then
++    ROLLOUT_MAX_MODEL_LEN=${VAL_MAX_SEQ_LEN}
++fi
++if [ -z "${ACTOR_MAX_TOKEN_LEN}" ] || [ "${ACTOR_MAX_TOKEN_LEN}" = "None" ]; then
++    ACTOR_MAX_TOKEN_LEN=${TRAIN_MAX_SEQ_LEN}
++fi
++LOGPROB_MAX_RESP=${MAX_RESP}
++if [ "${VAL_MAX_RESP}" -gt "${LOGPROB_MAX_RESP}" ]; then
++    LOGPROB_MAX_RESP=${VAL_MAX_RESP}
++fi
++LOGPROB_MAX_SEQ_LEN=$((MAX_PROMPT + LOGPROB_MAX_RESP))
++ROLLOUT_MAX_BATCHED_TOKENS=${VAL_MAX_SEQ_LEN}
++
++USE_SWANLAB_LOWER=$(echo "$USE_SWANLAB" | tr '[:upper:]' '[:lower:]')
++LOGGER='["console","tensorboard","file"]'
++if [ "$USE_SWANLAB_LOWER" = "true" ]; then
++    LOGGER='["console","tensorboard","file","swanlab"]'
++fi
++
++NUM_DP=$((N_GPUS_PER_NODE / TP))
++ROLLOUT_BATCH=$((BS * NUM_DP))                    # prompts per rollout
++ROLLOUT_SAMPLES=$((ROLLOUT_BATCH * GROUP_SIZE))    # samples per rollout
++
++# ppo_mini_batch_size: how many samples per optimizer step.
++# Default = rollout_samples (one update per rollout).
++# Set smaller in yaml to get multiple updates per rollout.
++PPO_MINI_BS=$(Y ppo_mini_batch_size ${ROLLOUT_BATCH})
++
+ PARQUET_ROOT="${DATA_ROOT%/}/verl"
+ 
+ normalize_dataset_spec() {
+@@ -431,12 +508,17 @@ for key in beta jsd_token_clip teacher_mode \
+            epsilon epsilon_w tau lam lam_decay_steps teacher_sync_interval \
+            rlcsd_tau rlcsd_beta rlcsd_lam rlcsd_delta rlcsd_eta \
+            rlcsd_residual_clip_low rlcsd_residual_clip_high rlcsd_k_max \
++           rlcsd_use_grpo_advantage \
+            opsd_ectr_alpha opsd_ectr_log_w_floor opsd_ectr_cw_tau \
+            rlsd_ectr_lam \
+            srpo_beta; do
+     val=$(Y $key "")
+     [ -n "$val" ] && [ "$val" != "None" ] && ALGO="$ALGO +actor_rollout_ref.actor.policy_loss.${key}=${val}"
+ done
++# CLI override wins over yaml for this ablation knob.
++if [ -n "${RLCSD_USE_GRPO_ADVANTAGE:-}" ]; then
++    ALGO="$ALGO +actor_rollout_ref.actor.policy_loss.rlcsd_use_grpo_advantage=${RLCSD_USE_GRPO_ADVANTAGE}"
++fi
+ if [ "$METHOD" != "grpo" ] && [ "$METHOD" != "opd" ]; then
+     ALGO="$ALGO +actor_rollout_ref.rollout.custom.privileged_text_mode=${PRIVILEGED_TEXT_MODE}"
+     ALGO="$ALGO +actor_rollout_ref.rollout.custom.teacher_enable_thinking=${TEACHER_ENABLE_THINKING}"
+diff --git a/third_party/verl/verl/trainer/ppo/core_algos.py b/third_party/verl/verl/trainer/ppo/core_algos.py
+index 69ab4eb..171a1d7 100644
+--- a/third_party/verl/verl/trainer/ppo/core_algos.py
++++ b/third_party/verl/verl/trainer/ppo/core_algos.py
+@@ -2931,6 +2931,9 @@ def compute_policy_loss_rlcsd(old_log_prob, log_prob, advantages, response_mask,
+     eta = max(float(_sd_cfg(config, "rlcsd_eta", 1.0)), 0.0)
+     residual_clip_low = float(_sd_cfg(config, "rlcsd_residual_clip_low", -0.5))
+     residual_clip_high = float(_sd_cfg(config, "rlcsd_residual_clip_high", 0.5))
++    # Default True: mod_adv = GRPO adv + contrastive residual (sign-clamped).
++    # False: drop GRPO advantage entirely; only contrastive residual on selected tokens.
++    use_grpo_advantage = _sd_bool_cfg(config, "rlcsd_use_grpo_advantage", True)
+     if residual_clip_low > residual_clip_high:
+         residual_clip_low, residual_clip_high = residual_clip_high, residual_clip_low
+ 
+@@ -2961,19 +2964,25 @@ def compute_policy_loss_rlcsd(old_log_prob, log_prob, advantages, response_mask,
+             sample_count = valid_sample_mask.float().sum()
+         else:
+             sample_count = torch.as_tensor(1.0, dtype=selected_count.dtype, device=selected_count.device)
+-        raw_mod_adv = advantages + residual_for_adv
+-        mod_adv = torch.where(
+-            advantages > 0,
+-            raw_mod_adv.clamp_min(0.0),
+-            torch.where(advantages < 0, raw_mod_adv.clamp_max(0.0), torch.zeros_like(raw_mod_adv)))
++        if use_grpo_advantage:
++            raw_mod_adv = advantages + residual_for_adv
++            mod_adv = torch.where(
++                advantages > 0,
++                raw_mod_adv.clamp_min(0.0),
++                torch.where(advantages < 0, raw_mod_adv.clamp_max(0.0), torch.zeros_like(raw_mod_adv)))
++            base_adv = advantages
++        else:
++            # Contrastive-only: no GRPO base; non-selected tokens contribute 0.
++            mod_adv = residual_for_adv
++            base_adv = torch.zeros_like(advantages)
+         K_valid_mean = K_valid.mean()
+ 
+     ratio_clamped = ratio.clamp(1 - epsilon, 1 + epsilon)
+     nonselected_mask = response_mask * (1.0 - selected_float)
+     selected_mask = response_mask * selected_float
+ 
+-    surr_nonselected1 = ratio * advantages
+-    surr_nonselected2 = ratio_clamped * advantages
++    surr_nonselected1 = ratio * base_adv
++    surr_nonselected2 = ratio_clamped * base_adv
+     nonselected_per_token_loss = -torch.min(surr_nonselected1, surr_nonselected2)
+ 
+     surr_selected1 = ratio * mod_adv
+@@ -2993,7 +3002,8 @@ def compute_policy_loss_rlcsd(old_log_prob, log_prob, advantages, response_mask,
+         "rlcsd_selected_token_count": selected_count.item(),
+         "rlcsd_response_token_count": response_token_count.item(),
+         "rlcsd_sample_count": sample_count.item(),
+-        "rlcsd_K_valid_mean": K_valid_mean.item()}
++        "rlcsd_K_valid_mean": K_valid_mean.item(),
++        "rlcsd_use_grpo_advantage": float(use_grpo_advantage)}
+     metrics.update(_sd_distribution_metrics(e_ctr, response_mask, "rlcsd_e_ctr", include_percentiles=False))
+     metrics.update(_sd_distribution_metrics(residual, selected_mask, "rlcsd_selected_residual"))
+     return loss, metrics
+diff --git a/third_party/verl/verl/workers/config/actor.py b/third_party/verl/verl/workers/config/actor.py
+index c23fedd..8d5e0e3 100644
+--- a/third_party/verl/verl/workers/config/actor.py
++++ b/third_party/verl/verl/workers/config/actor.py
+@@ -145,6 +145,8 @@ class PolicyLossConfig(BaseConfig):
+     rlcsd_residual_clip_low: Optional[float] = None
+     rlcsd_residual_clip_high: Optional[float] = None
+     rlcsd_k_max: Optional[int] = None
++    # If False, RLCSD drops GRPO advantages and uses only contrastive residual.
++    rlcsd_use_grpo_advantage: bool = True
+     srpo_beta: Optional[float] = None
+ 
+ 
