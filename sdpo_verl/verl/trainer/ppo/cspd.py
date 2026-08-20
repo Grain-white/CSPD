@@ -17,6 +17,20 @@ def select_prefixes(entropy: torch.Tensor, response_mask: torch.Tensor, max_pref
     return selected & valid
 
 
+def values_to_success(values, reward_range: str = "pm1"):
+    """Map critic values to success probabilities for CSPD.
+
+    - ``pm1``: verifier rewards in {-1, +1}, so V = 2P(success) - 1.
+    - ``01``: verifier rewards in {0, 1} (e.g. GSM8K), so V ≈ P(success).
+    """
+    v = values.float()
+    if reward_range == "pm1":
+        return ((v + 1.0) * 0.5).clamp(0, 1)
+    if reward_range == "01":
+        return v.clamp(0, 1)
+    raise ValueError(f"Unknown CSPD reward_range={reward_range!r}; expected 'pm1' or '01'")
+
+
 def build_success_posterior(
     behavior_logp,
     successor_values,
@@ -24,13 +38,11 @@ def build_success_posterior(
     selected_mask,
     eps=1e-6,
     return_diagnostics=False,
+    reward_range: str = "pm1",
 ):
     """Equations (23)-(24), with the tail projected to its feasible interval."""
-    # The PPO critic is trained on the {-1, +1} verifier reward.  Its output is
-    # therefore E[R | s] = 2 * P(success | s) - 1, whereas CSPD equations
-    # (8)-(10) require probabilities of success.
-    successor_success = ((successor_values.float() + 1.0) * 0.5).clamp(0, 1)
-    state_success = ((state_values.float() + 1.0) * 0.5).clamp(0, 1)
+    successor_success = values_to_success(successor_values, reward_range)
+    state_success = values_to_success(state_values, reward_range)
     pi_top = behavior_logp.float().exp()
     top_mass = pi_top * successor_success
     pi_tail = (1 - pi_top.sum(-1)).clamp(0, 1)

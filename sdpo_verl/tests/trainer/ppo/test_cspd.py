@@ -21,6 +21,21 @@ def test_topk_tail_posterior():
     torch.testing.assert_close(weight, torch.tensor([[0.5]]))
 
 
+def test_topk_tail_posterior_reward_range_01():
+    # Critic trained on {0,1}: V≈P(success). Same numbers as pm1 would mean different probs.
+    target, weight = build_success_posterior(
+        torch.log(torch.tensor([[[0.4, 0.3]]])),
+        torch.tensor([[[0.8, 0.2]]]),
+        torch.tensor([[0.5]]),
+        torch.tensor([[True]]),
+        reward_range="01",
+    )
+    # top mass = pi * V_succ = [0.32, 0.06]; raw_tail = 0.5 - 0.38 = 0.12; pi_tail=0.3
+    mass = torch.tensor([0.32, 0.06, 0.12])
+    torch.testing.assert_close(target[0, 0], mass / mass.sum())
+    torch.testing.assert_close(weight, torch.tensor([[0.5]]))
+
+
 def test_negative_ppo_value_still_has_nonzero_success_weight():
     _, weight = build_success_posterior(
         torch.log(torch.tensor([[[0.4, 0.3]]])), torch.tensor([[[-0.5, -0.5]]]),

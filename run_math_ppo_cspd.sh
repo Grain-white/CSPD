@@ -3,8 +3,8 @@ set -euo pipefail
 
 METHOD="${1:-}"
 shift || true
-if [[ "${METHOD}" != "ppo" && "${METHOD}" != "cspd" ]]; then
-  echo "Usage: $0 {ppo|cspd} [Hydra overrides...]" >&2
+if [[ "${METHOD}" != "ppo" && "${METHOD}" != "cspd" && "${METHOD}" != "grpo" ]]; then
+  echo "Usage: $0 {ppo|cspd|grpo} [Hydra overrides...]" >&2
   exit 2
 fi
 
@@ -13,8 +13,9 @@ VERL=${ROOT}/sdpo_verl
 ENV_PATH=/WORK/PUBLIC/alex_work/miniconda3/envs/sdpo-full
 MODEL_PATH=${MODEL_PATH:-/WORK/PUBLIC/alex_work/Meiqi.Gu/models/Qwen3-1.7B}
 DATA_ROOT=/WORK/PUBLIC/alex_work/Meiqi.Gu/SDPO/datasets/dapo_hf/processed
-TRAIN_FILE=${ROOT}/data/dapo-math-17k-seed42.parquet
-VAL_FILES="[${DATA_ROOT}/math-500.eval.parquet,${DATA_ROOT}/aime-2024.eval.parquet,${DATA_ROOT}/aime-2025.eval.parquet,/home/fit/alex1/WORK/Meiqi.Gu/SDPO/datasets/openthoughts_math/processed/hmmt-2025.eval.parquet]"
+TRAIN_FILE=${TRAIN_FILE:-${ROOT}/data/dapo-math-17k-seed42.parquet}
+TRAIN_MAX_SAMPLES=${TRAIN_MAX_SAMPLES:-17000}
+VAL_FILES=${VAL_FILES:-"[${DATA_ROOT}/math-500.eval.parquet,${DATA_ROOT}/aime-2024.eval.parquet,${DATA_ROOT}/aime-2025.eval.parquet,/home/fit/alex1/WORK/Meiqi.Gu/SDPO/datasets/openthoughts_math/processed/hmmt-2025.eval.parquet]"}
 GPUS=${GPUS_PER_NODE:-4}
 STEPS=${TOTAL_TRAINING_STEPS:-300}
 TRAIN_BATCH=${TRAIN_BATCH_SIZE:-32}
@@ -69,19 +70,25 @@ LOGGER='["console","swanlab"]'
 
 LOSS_MODE=vanilla
 [[ "${METHOD}" == cspd ]] && LOSS_MODE=cspd
+ADV_ESTIMATOR=gae
+CRITIC_ENABLE=True
+if [[ "${METHOD}" == grpo ]]; then
+  ADV_ESTIMATOR=grpo
+  CRITIC_ENABLE=False
+fi
 
 cd "${ROOT}"
 python -m verl.trainer.main_ppo \
   ++ray_kwargs.ray_init.num_cpus="${RAY_NUM_CPUS:-${SLURM_CPUS_PER_TASK:-8}}" \
   ++ray_kwargs.ray_init.include_dashboard=False \
-  algorithm.adv_estimator=gae \
+  algorithm.adv_estimator="${ADV_ESTIMATOR}" \
   algorithm.gamma=1.0 \
   algorithm.lam=1.0 \
   algorithm.use_kl_in_reward=False \
   data.train_files="[${TRAIN_FILE}]" \
   data.val_files="${VAL_FILES}" \
   data.train_batch_size="${TRAIN_BATCH}" \
-  data.train_max_samples=17000 \
+  data.train_max_samples="${TRAIN_MAX_SAMPLES}" \
   data.max_prompt_length="${MAX_PROMPT}" \
   data.max_response_length="${MAX_RESPONSE}" \
   data.filter_overlong_prompts=True \
@@ -105,6 +112,7 @@ python -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.policy_loss.loss_mode="${LOSS_MODE}" \
   +actor_rollout_ref.actor.policy_loss.cspd_topk="${CSPD_TOPK:-8}" \
   +actor_rollout_ref.actor.policy_loss.cspd_prefixes_per_response="${CSPD_PREFIXES:-8}" \
+  +actor_rollout_ref.actor.policy_loss.cspd_reward_range="${CSPD_REWARD_RANGE:-pm1}" \
   actor_rollout_ref.actor.fsdp_config.model_dtype=bfloat16 \
   actor_rollout_ref.actor.fsdp_config.param_offload=True \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
@@ -126,7 +134,7 @@ python -m verl.trainer.main_ppo \
   actor_rollout_ref.rollout.val_kwargs.temperature="${VAL_TEMPERATURE}" \
   actor_rollout_ref.rollout.val_kwargs.top_p="${VAL_TOP_P}" \
   actor_rollout_ref.rollout.val_kwargs.top_k="${VAL_TOP_K}" \
-  critic.enable=True \
+  critic.enable="${CRITIC_ENABLE}" \
   critic.strategy=fsdp \
   critic.model.path="${MODEL_PATH}" \
   critic.model.use_remove_padding=True \
