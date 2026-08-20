@@ -75,6 +75,12 @@ policy_loss:
   # KL divergence penalty coefficient
   ppo_kl_coef: 0.1
 
+  # CSPD (optional; also overridable via + overrides)
+  cspd_topk: 8
+  cspd_prefixes_per_response: 8
+  # pm1: {-1,+1} rewards; 01: {0,1} rewards (e.g. GSM8K)
+  cspd_reward_range: pm1
+
 # self-distillation config
 self_distillation:
 
