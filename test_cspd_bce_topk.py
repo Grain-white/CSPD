@@ -59,3 +59,29 @@ def test_unselected_prefix_keeps_policy_topk_order():
 
     torch.testing.assert_close(positions, torch.tensor([[[0, 1]]]))
     torch.testing.assert_close(ids, torch.tensor([[[10, 11]]]))
+
+
+def test_baseline_tail_uses_zero_advantage_mass_and_total_weight():
+    from verl.trainer.ppo.cspd import build_success_posterior
+
+    behavior_logp = torch.tensor([[[0.4, 0.3]]]).log()
+    successor_values = torch.tensor([[[0.8, 0.2]]])
+    state_values = torch.tensor([[0.5]])
+    selected = torch.tensor([[True]])
+
+    target, weight, diagnostics = build_success_posterior(
+        behavior_logp,
+        successor_values,
+        state_values,
+        selected,
+        reward_range="01",
+        tail_mode="baseline",
+        return_diagnostics=True,
+    )
+
+    expected_masses = torch.tensor([0.32, 0.06, 0.15])
+    expected_total = expected_masses.sum()
+    torch.testing.assert_close(target[0, 0], expected_masses / expected_total)
+    torch.testing.assert_close(weight[0, 0], expected_total)
+    torch.testing.assert_close(diagnostics["implied_tail_success"][0, 0], torch.tensor(0.5))
+    assert not diagnostics["tail_projection_mask"][0, 0]

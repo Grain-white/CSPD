@@ -58,6 +58,7 @@ ROLLOUT_N=8 \
 GPU_MEM_UTIL=0.55 \
 CRITIC_LOSS_TYPE=bce \
 CSPD_REWARD_RANGE=01 \
+CSPD_TAIL_MODE=${CSPD_TAIL_MODE:-residual} \
 CSPD_TOPK=${K} \
 CSPD_PROPOSAL_TOPK=${K0} \
 ${ROOT}/scripts/training/run_math_ppo_cspd.sh ${METHOD}'"

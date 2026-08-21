@@ -223,6 +223,8 @@ class PolicyLossConfig(BaseConfig):
     cspd_prefixes_per_response: int = 8
     # Map critic values to success probs: 'pm1' for {-1,+1} rewards, '01' for {0,1} (e.g. GSM8K).
     cspd_reward_range: str = "pm1"
+    # residual: projected Bellman residual; baseline: pi_tail * V(s).
+    cspd_tail_mode: str = "residual"
 
 
 @dataclass

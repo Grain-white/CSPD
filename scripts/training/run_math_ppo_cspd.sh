@@ -114,6 +114,7 @@ python -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.policy_loss.cspd_proposal_topk="${CSPD_PROPOSAL_TOPK:-${CSPD_TOPK:-8}}" \
   actor_rollout_ref.actor.policy_loss.cspd_prefixes_per_response="${CSPD_PREFIXES:-8}" \
   actor_rollout_ref.actor.policy_loss.cspd_reward_range="${CSPD_REWARD_RANGE:-pm1}" \
+  actor_rollout_ref.actor.policy_loss.cspd_tail_mode="${CSPD_TAIL_MODE:-residual}" \
   actor_rollout_ref.actor.fsdp_config.model_dtype=bfloat16 \
   actor_rollout_ref.actor.fsdp_config.param_offload=True \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \

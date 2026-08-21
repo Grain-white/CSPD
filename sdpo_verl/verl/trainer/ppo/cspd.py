@@ -69,24 +69,41 @@ def build_success_posterior(
     eps=1e-6,
     return_diagnostics=False,
     reward_range: str = "pm1",
+    tail_mode: str = "residual",
 ):
-    """Equations (23)-(24), with the tail projected to its feasible interval."""
+    """Build a sparse success posterior with a residual or zero-advantage tail.
+
+    ``residual`` uses the Bellman residual and projects it to ``[0, pi_tail]``.
+    ``baseline`` assigns the unresolved tail value ``Q_tail = V(s)`` and uses
+    the resulting total mass as the loss weight. At the behavior policy this
+    gives the top-K truncated policy-gradient estimator.
+    """
     successor_success = values_to_success(successor_values, reward_range)
     state_success = values_to_success(state_values, reward_range)
     pi_top = behavior_logp.float().exp()
     top_mass = pi_top * successor_success
     pi_tail = (1 - pi_top.sum(-1)).clamp(0, 1)
     raw_tail_mass = state_success - top_mass.sum(-1)
-    tail_mass = raw_tail_mass.clamp_min(0)
-    tail_mass = torch.minimum(tail_mass, pi_tail)
+    if tail_mode == "residual":
+        tail_mass = raw_tail_mass.clamp_min(0)
+        tail_mass = torch.minimum(tail_mass, pi_tail)
+        tail_projection_mask = (raw_tail_mass < 0) | (raw_tail_mass > pi_tail)
+    elif tail_mode == "baseline":
+        tail_mass = pi_tail * state_success
+        tail_projection_mask = torch.zeros_like(selected_mask, dtype=torch.bool)
+    else:
+        raise ValueError(f"Unknown CSPD tail_mode={tail_mode!r}; expected 'residual' or 'baseline'")
     masses = torch.cat((top_mass, tail_mass.unsqueeze(-1)), -1)
     total = masses.sum(-1)
     valid = selected_mask.bool() & (total > eps)
     target = torch.where(valid.unsqueeze(-1), masses / total.clamp_min(eps).unsqueeze(-1), 0)
-    # Equation (10) is weighted by the frozen state value V_k(s), not by the
-    # projected approximation's residual total mass. They coincide only for a
-    # perfectly consistent critic.
-    value_weight = torch.where(valid, state_success, 0)
+    if tail_mode == "baseline":
+        value_weight = torch.where(valid, total, 0)
+    else:
+        # Equation (10) is weighted by the frozen state value V_k(s), not by
+        # the projected approximation's residual total mass. They coincide
+        # only for a perfectly consistent critic.
+        value_weight = torch.where(valid, state_success, 0)
     if not return_diagnostics:
         return target.detach(), value_weight.detach()
 
@@ -99,11 +116,10 @@ def build_success_posterior(
         "behavior_tail_probability": pi_tail.detach(),
         "raw_tail_mass": raw_tail_mass.detach(),
         "projected_tail_mass": tail_mass.detach(),
+        "implied_tail_success": (tail_mass / pi_tail.clamp_min(eps)).detach(),
         "posterior_mass": total.detach(),
         "state_to_mass_ratio": (state_success / total.clamp_min(eps)).detach(),
-        "tail_projection_mask": (
-            selected_mask.bool() & ((raw_tail_mass < 0) | (raw_tail_mass > pi_tail))
-        ).detach(),
+        "tail_projection_mask": (selected_mask.bool() & tail_projection_mask).detach(),
         "valid_mask": valid.detach(),
     }
     return target.detach(), value_weight.detach(), diagnostics

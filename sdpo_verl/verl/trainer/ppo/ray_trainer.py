@@ -1785,6 +1785,7 @@ class RayPPOTrainer:
             raise ValueError(f"cspd_proposal_topk={proposal_topk} must be >= cspd_topk={topk}")
         max_prefixes = int(loss_cfg.get("cspd_prefixes_per_response", 8))
         reward_range = str(loss_cfg.get("cspd_reward_range", "pm1"))
+        tail_mode = str(loss_cfg.get("cspd_tail_mode", "residual"))
         previous_topk = batch.meta_info.get("cspd_topk")
         batch.meta_info["cspd_topk"] = proposal_topk
         try:
@@ -1817,6 +1818,7 @@ class RayPPOTrainer:
             selected,
             return_diagnostics=True,
             reward_range=reward_range,
+            tail_mode=tail_mode,
         )
         selected_candidates = selected.unsqueeze(-1).expand_as(successor_values)
         valid = diagnostics["valid_mask"]
@@ -1850,6 +1852,7 @@ class RayPPOTrainer:
             "behavior_tail_probability",
             "raw_tail_mass",
             "projected_tail_mass",
+            "implied_tail_success",
             "posterior_mass",
             "state_to_mass_ratio",
         ):
@@ -1861,6 +1864,7 @@ class RayPPOTrainer:
                 diagnostics["tail_projection_mask"][selected].float().mean().item()
             )
         target_metrics["diagnostics/cspd_reward_range_is_01"] = float(reward_range == "01")
+        target_metrics["diagnostics/cspd_tail_mode_is_baseline"] = float(tail_mode == "baseline")
         return DataProto.from_dict(tensors={
             "cspd_topk_indices": topk_ids,
             "cspd_target_probs": target,

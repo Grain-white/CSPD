@@ -92,6 +92,7 @@ critic learning rate  1e-5
 PPO epochs               1
 CSPD top-K                8
 CSPD prefixes/response    8
+CSPD tail mode      residual
 validation samples       12
 save frequency           50
 validation frequency      5
@@ -281,6 +282,7 @@ sha256sum -c data/dapo-math-17k-seed42.sha256
 | `scripts/experiments/gsm8k/submit_gsm8k_cspd_01reward.sh` | Submits the corrected 0/1-reward GSM8K CSPD experiment. |
 | `scripts/experiments/gsm8k/submit_gsm8k_ppo_criticcheck.sh` | Submits matched GSM8K PPO/CSPD critic diagnostics. |
 | `scripts/experiments/gsm8k/smoke_gsm8k_bce_twostage_1gpu.sh` | Exercises BCE critic and two-stage selection for one step on one GPU. |
+| `scripts/experiments/gsm8k/smoke_baseline_tail_1gpu.sh` | Exercises the zero-advantage `pi_tail * V(s)` tail for one step on one GPU. |
 | `scripts/experiments/math/submit_math75k_comparison.sh` | Submits matched Math-75K PPO/CSPD runs. |
 | `scripts/experiments/math/submit_grpo_dapo17k_math75k.sh` | Submits GRPO dataset-control runs on DAPO-17K and Math-75K. |
 | `scripts/diagnostics/submit_verify_v3.sh` | Submits a step-zero/validation verifier smoke. |
