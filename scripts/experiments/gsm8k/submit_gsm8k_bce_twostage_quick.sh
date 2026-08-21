@@ -19,10 +19,10 @@ K0=${CSPD_PROPOSAL_TOPK:-16}
 
 if [[ "${METHOD}" == "cspd" ]]; then
   TAG=${TAG:-gsm8k-bce-twostage-k${K0}-quick${STEPS}-v1}
-  JOB_NAME=cspd-gsm-bce-k${K0}
+  JOB_NAME=${JOB_NAME:-cspd-gsm-bce-k${K0}}
 else
   TAG=${TAG:-gsm8k-bce-quick${STEPS}-v1}
-  JOB_NAME=ppo-gsm-bce
+  JOB_NAME=${JOB_NAME:-ppo-gsm-bce}
 fi
 
 EXP_NAME="CSPD-${METHOD}-qwen3-1.7b-seed42-${TAG}"

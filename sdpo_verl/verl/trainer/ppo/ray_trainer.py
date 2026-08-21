@@ -1865,6 +1865,7 @@ class RayPPOTrainer:
             )
         target_metrics["diagnostics/cspd_reward_range_is_01"] = float(reward_range == "01")
         target_metrics["diagnostics/cspd_tail_mode_is_baseline"] = float(tail_mode == "baseline")
+        target_metrics["diagnostics/cspd_tail_mode_is_no_tail"] = float(tail_mode == "no_tail")
         return DataProto.from_dict(tensors={
             "cspd_topk_indices": topk_ids,
             "cspd_target_probs": target,

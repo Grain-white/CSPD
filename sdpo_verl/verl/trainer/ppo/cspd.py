@@ -71,12 +71,17 @@ def build_success_posterior(
     reward_range: str = "pm1",
     tail_mode: str = "residual",
 ):
-    """Build a sparse success posterior with a residual or zero-advantage tail.
+    """Build a sparse success posterior with configurable tail treatment.
 
     ``residual`` uses the Bellman residual and projects it to ``[0, pi_tail]``.
     ``baseline`` assigns the unresolved tail value ``Q_tail = V(s)`` and uses
     the resulting total mass as the loss weight. At the behavior policy this
     gives the top-K truncated policy-gradient estimator.
+
+    ``no_tail`` conditions the posterior on the retained top-K successors by
+    setting the tail target to zero and renormalizing the retained masses.  It
+    deliberately keeps the equation-(10) state-value weight, so this mode is a
+    strict tail-target ablation and has the expected truncation bias.
     """
     successor_success = values_to_success(successor_values, reward_range)
     state_success = values_to_success(state_values, reward_range)
@@ -91,8 +96,13 @@ def build_success_posterior(
     elif tail_mode == "baseline":
         tail_mass = pi_tail * state_success
         tail_projection_mask = torch.zeros_like(selected_mask, dtype=torch.bool)
+    elif tail_mode == "no_tail":
+        tail_mass = torch.zeros_like(pi_tail)
+        tail_projection_mask = torch.zeros_like(selected_mask, dtype=torch.bool)
     else:
-        raise ValueError(f"Unknown CSPD tail_mode={tail_mode!r}; expected 'residual' or 'baseline'")
+        raise ValueError(
+            f"Unknown CSPD tail_mode={tail_mode!r}; expected 'residual', 'baseline', or 'no_tail'"
+        )
     masses = torch.cat((top_mass, tail_mass.unsqueeze(-1)), -1)
     total = masses.sum(-1)
     valid = selected_mask.bool() & (total > eps)

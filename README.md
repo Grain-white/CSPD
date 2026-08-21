@@ -26,21 +26,27 @@ At each rollout iteration, the current CSPD implementation:
 
 1. freezes the behavior actor and pre-update critic;
 2. selects at most eight high-entropy response prefixes per response;
-3. takes eight behavior-policy top-probability next-token candidates;
-4. evaluates `V(s + a)` for every selected candidate;
-5. builds a projected top-K plus tail success posterior; and
+3. proposes `K0` behavior-policy next-token candidates;
+4. evaluates `V(s + a)` and retains `K` candidates by `pi(a|s)V(s+a)`;
+5. builds a configurable top-K plus tail success posterior; and
 6. minimizes its frozen value-weighted forward cross-entropy, which has the
    same actor gradient as forward KL because target entropy is constant.
 
 The implementation is a practical approximation:
 
-- it uses behavior top-K directly (`K0 = K`) rather than proposing `K0 > K`
-  and reranking by posterior mass;
 - high-entropy prefix selection changes the state distribution;
 - tail projection and renormalization can break the exact mass identity;
 - successor critic calls currently rebuild full prefixes instead of reusing a
   critic KV cache; and
 - PPO whitens GAE while CSPD currently leaves its loss unnormalized.
+
+`cspd_tail_mode` supports three ablations:
+
+- `residual`: projected Bellman residual `V(s) - sum_a pi(a|s)V(s+a)`;
+- `baseline`: zero-advantage tail `pi_tail V(s)`; and
+- `no_tail`: sets tail target mass to zero, renormalizes over retained
+  successors, and keeps the equation-(10) `V(s)` loss weight. This deliberately
+  introduces truncation/conditioning bias and isolates the tail target.
 
 See [CONTRASTIVE_CSPD_DERIVATION.md](CONTRASTIVE_CSPD_DERIVATION.md) for the
 success/failure posterior, Signed-KL, proximal interpretation, and bounded
@@ -279,10 +285,14 @@ sha256sum -c data/dapo-math-17k-seed42.sha256
 | `scripts/experiments/general/submit_comparison.sh` | Submits matched four-GPU PPO and CSPD jobs; does not cancel jobs. |
 | `scripts/experiments/general/submit_cspd_valueprobfix.sh` | Submits the latest corrected CSPD diagnostic job only. |
 | `scripts/experiments/gsm8k/submit_gsm8k_bce_twostage_quick.sh` | Submits matched 20-step GSM8K BCE-critic PPO/CSPD runs; CSPD uses K0-to-K reranking. |
+| `scripts/experiments/gsm8k/submit_gsm8k_bce_quick50_suite.sh` | Resumes matched PPO, residual-tail, and baseline-tail runs from step 20 to 50 and launches no-tail to step 50. |
+| `scripts/experiments/gsm8k/submit_gsm8k_cspd_no_tail_quick.sh` | Submits the configurable GSM8K no-tail CSPD ablation. |
 | `scripts/experiments/gsm8k/submit_gsm8k_cspd_01reward.sh` | Submits the corrected 0/1-reward GSM8K CSPD experiment. |
 | `scripts/experiments/gsm8k/submit_gsm8k_ppo_criticcheck.sh` | Submits matched GSM8K PPO/CSPD critic diagnostics. |
 | `scripts/experiments/gsm8k/smoke_gsm8k_bce_twostage_1gpu.sh` | Exercises BCE critic and two-stage selection for one step on one GPU. |
 | `scripts/experiments/gsm8k/smoke_baseline_tail_1gpu.sh` | Exercises the zero-advantage `pi_tail * V(s)` tail for one step on one GPU. |
+| `scripts/experiments/gsm8k/smoke_no_tail_1gpu.sh` | Exercises the renormalized no-tail posterior for one step on one GPU. |
+| `scripts/maintenance/replay_swanlab_step.py` | Replays one numeric verl console-metric line into an existing SwanLab run. |
 | `scripts/experiments/math/submit_math75k_comparison.sh` | Submits matched Math-75K PPO/CSPD runs. |
 | `scripts/experiments/math/submit_grpo_dapo17k_math75k.sh` | Submits GRPO dataset-control runs on DAPO-17K and Math-75K. |
 | `scripts/diagnostics/submit_verify_v3.sh` | Submits a step-zero/validation verifier smoke. |

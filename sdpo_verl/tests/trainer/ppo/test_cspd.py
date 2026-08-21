@@ -58,6 +58,26 @@ def test_posterior_diagnostics_expose_projection_and_mass_ratio():
     torch.testing.assert_close(target.sum(-1), torch.ones(1, 1))
 
 
+def test_no_tail_conditions_posterior_on_retained_successors():
+    target, weight, diagnostics = build_success_posterior(
+        torch.log(torch.tensor([[[0.4, 0.3]]])),
+        torch.tensor([[[0.8, 0.2]]]),
+        torch.tensor([[0.5]]),
+        torch.tensor([[True]]),
+        reward_range="01",
+        tail_mode="no_tail",
+        return_diagnostics=True,
+    )
+    top_mass = torch.tensor([0.32, 0.06])
+    expected = torch.cat((top_mass / top_mass.sum(), torch.zeros(1)))
+    torch.testing.assert_close(target[0, 0], expected)
+    # Keep V(s) so this differs from the baseline/truncated-mass estimator only
+    # in the posterior tail target.
+    torch.testing.assert_close(weight, torch.tensor([[0.5]]))
+    torch.testing.assert_close(diagnostics["projected_tail_mass"], torch.zeros(1, 1))
+    assert not diagnostics["tail_projection_mask"].item()
+
+
 def test_math_reward_accepts_answer_and_boxed_formats():
     assert compute_score("Therefore, Answer: 42", "42")["acc"]
     assert compute_score(r"Therefore, $\boxed{42}$", "42")["acc"]
