@@ -10,4 +10,4 @@ export MAX_NUM_SEQS=${MAX_NUM_SEQS:-16}
 export AGENT_LOOP_WORKERS=${AGENT_LOOP_WORKERS:-1}
 export RAY_NUM_CPUS=${RAY_NUM_CPUS:-4}
 export SWANLAB_MODE=disabled EXP_NAME=debug-${METHOD}-${SLURM_JOB_ID:-local}
-exec /home/fit/alex1/WORK/Meiqi.Gu/CSPD/run_math_ppo_cspd.sh "${METHOD}"
+exec /home/fit/alex1/WORK/Meiqi.Gu/CSPD/scripts/training/run_math_ppo_cspd.sh "${METHOD}"

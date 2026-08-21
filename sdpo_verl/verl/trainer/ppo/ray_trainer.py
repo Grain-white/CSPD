@@ -1761,6 +1761,8 @@ class RayPPOTrainer:
             output = output.get()
             values = tu.get(output, "values")
             values = no_padding_2_padding(values, batch_td)
+            if str(self.config.critic.get("value_loss_type", "mse")) == "bce":
+                values = values.float().sigmoid()
             values = tu.get_tensordict({"values": values.float()})
             values = DataProto.from_tensordict(values)
         else:
@@ -1768,15 +1770,23 @@ class RayPPOTrainer:
         return values
 
     def _prepare_cspd_targets(self, batch: DataProto) -> tuple[DataProto, dict[str, float]]:
-        """Freeze pi_k and V_k, score top-K successors, and attach CSPD targets."""
-        from verl.trainer.ppo.cspd import build_success_posterior, make_successor_batch, select_prefixes
+        """Freeze pi_k and V_k, score policy top-K0, rerank to K, and attach targets."""
+        from verl.trainer.ppo.cspd import (
+            build_success_posterior,
+            make_successor_batch,
+            rerank_posterior_candidates,
+            select_prefixes,
+        )
 
         loss_cfg = self.config.actor_rollout_ref.actor.policy_loss
         topk = int(loss_cfg.get("cspd_topk", 8))
+        proposal_topk = int(loss_cfg.get("cspd_proposal_topk", topk))
+        if proposal_topk < topk:
+            raise ValueError(f"cspd_proposal_topk={proposal_topk} must be >= cspd_topk={topk}")
         max_prefixes = int(loss_cfg.get("cspd_prefixes_per_response", 8))
         reward_range = str(loss_cfg.get("cspd_reward_range", "pm1"))
         previous_topk = batch.meta_info.get("cspd_topk")
-        batch.meta_info["cspd_topk"] = topk
+        batch.meta_info["cspd_topk"] = proposal_topk
         try:
             behavior = self._compute_old_log_prob(batch)[0]
         finally:
@@ -1784,14 +1794,22 @@ class RayPPOTrainer:
                 batch.meta_info.pop("cspd_topk", None)
             else:
                 batch.meta_info["cspd_topk"] = previous_topk
-        topk_logp = behavior.batch["cspd_topk_log_probs"]
-        topk_ids = behavior.batch["cspd_topk_indices"]
+        candidate_logp = behavior.batch["cspd_topk_log_probs"]
+        candidate_ids = behavior.batch["cspd_topk_indices"]
         selected = select_prefixes(behavior.batch["entropys"], batch.batch["response_mask"], max_prefixes)
-        successor_batch, _, _ = make_successor_batch(batch, selected, topk_ids, self.tokenizer.pad_token_id)
-        successor_values = torch.zeros_like(topk_logp, dtype=torch.float32)
+        successor_batch, _, _ = make_successor_batch(batch, selected, candidate_ids, self.tokenizer.pad_token_id)
+        candidate_values = torch.zeros_like(candidate_logp, dtype=torch.float32)
         if successor_batch is not None:
             scored = self._compute_values(successor_batch).batch["values"][:, 0]
-            successor_values[selected] = scored.view(-1, topk).to(successor_values.dtype)
+            candidate_values[selected] = scored.view(-1, proposal_topk).to(candidate_values.dtype)
+        topk_logp, topk_ids, successor_values, retained_positions, candidate_mass = rerank_posterior_candidates(
+            candidate_logp,
+            candidate_ids,
+            candidate_values,
+            selected,
+            topk,
+            reward_range=reward_range,
+        )
         target, weights, diagnostics = build_success_posterior(
             topk_logp,
             successor_values,
@@ -1803,6 +1821,16 @@ class RayPPOTrainer:
         selected_candidates = selected.unsqueeze(-1).expand_as(successor_values)
         valid = diagnostics["valid_mask"]
         target_metrics = {}
+        if selected.any():
+            overlap = (retained_positions < topk).float().mean(-1)
+            policy_mass = candidate_mass[..., :topk].sum(-1)
+            retained_mass = candidate_mass.gather(-1, retained_positions).sum(-1)
+            target_metrics["diagnostics/cspd_candidate_overlap_fraction"] = overlap[selected].mean().item()
+            target_metrics["diagnostics/cspd_candidate_success_mass_gain"] = (
+                retained_mass[selected] - policy_mass[selected]
+            ).mean().item()
+        target_metrics["diagnostics/cspd_proposal_topk"] = float(proposal_topk)
+        target_metrics["diagnostics/cspd_retained_topk"] = float(topk)
         target_metrics.update(
             _masked_diagnostic_stats("diagnostics/cspd_state_success", diagnostics["state_success"], selected)
         )

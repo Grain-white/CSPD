@@ -2043,6 +2043,35 @@ def compute_value_loss(
     return vf_loss, vf_clipfrac
 
 
+def compute_binary_value_loss(
+    logits: torch.Tensor,
+    returns: torch.Tensor,
+    response_mask: torch.Tensor,
+    loss_agg_mode: str = "token-mean",
+):
+    """Train a success-probability critic with binary cross entropy.
+
+    The critic head emits unconstrained logits.  ``sigmoid(logits)`` is used as
+    the value estimate everywhere outside this loss.  With binary terminal
+    rewards and ``gamma=lam=1``, GAE returns are Monte-Carlo success labels.
+    Values outside [0, 1] are counted for diagnostics and clipped defensively;
+    callers should treat a nonzero fraction as a configuration error.
+    """
+    targets = returns.float()
+    target_oob = ((targets < 0) | (targets > 1)) & response_mask.bool()
+    target_oob_fraction = verl_F.masked_mean(target_oob.float(), response_mask)
+    targets = targets.clamp(0, 1)
+    loss_mat = F.binary_cross_entropy_with_logits(logits.float(), targets, reduction="none")
+    loss = agg_loss(loss_mat=loss_mat, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
+    probabilities = logits.float().sigmoid()
+    brier = agg_loss(
+        loss_mat=(probabilities - targets).square(),
+        loss_mask=response_mask,
+        loss_agg_mode=loss_agg_mode,
+    )
+    return loss, probabilities, brier, target_oob_fraction
+
+
 def kl_penalty(logprob: torch.FloatTensor, ref_logprob: torch.FloatTensor, kl_penalty) -> torch.FloatTensor:
     """Compute KL divergence given logprob and ref_logprob. Optionally using straight through to bind k2 on other
     kl penalty compute method for unbiased KL gradient estimation.

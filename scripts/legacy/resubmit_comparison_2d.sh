@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # LEGACY: this script contains hard-coded job IDs and may cancel those jobs.
-# Prefer submit_comparison.sh. Review OLD_JOBS and all overrides before reuse.
+# Prefer scripts/experiments/general/submit_comparison.sh. Review OLD_JOBS and all overrides before reuse.
 set -euo pipefail
 
 ROOT=/home/fit/alex1/WORK/Meiqi.Gu/CSPD
@@ -25,4 +25,4 @@ export TOTAL_TRAINING_STEPS=300
 export SAVE_FREQ=300
 export TEST_FREQ=50
 export VAL_N=12
-bash "${ROOT}/submit_comparison.sh"
+bash "${ROOT}/scripts/experiments/general/submit_comparison.sh"

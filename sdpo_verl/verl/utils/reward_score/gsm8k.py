@@ -49,6 +49,40 @@ def extract_solution(solution_str, method="strict"):
     return final_answer
 
 
+def _extract_boxed_numeric(solution_str: str):
+    """Fallback for models (e.g. Qwen3) that emit \\boxed{n} instead of #### n."""
+    try:
+        from .math_dapo import last_boxed_only_string, remove_boxed
+    except Exception:
+        return None
+    boxed = last_boxed_only_string(solution_str)
+    if boxed is None:
+        return None
+    try:
+        inner = remove_boxed(boxed)
+    except Exception:
+        return None
+    # Prefer a numeric token inside the box (strip $, commas, simple latex)
+    inner = inner.replace(",", "").replace("$", "").strip()
+    nums = re.findall(r"-?[0-9]+(?:\.[0-9]+)?", inner)
+    if not nums:
+        return inner if inner else None
+    return nums[-1]
+
+
+def _answers_equal(pred, ground_truth) -> bool:
+    if pred is None:
+        return False
+    p = str(pred).replace(",", "").replace("$", "").strip()
+    g = str(ground_truth).replace(",", "").replace("$", "").strip()
+    if p == g:
+        return True
+    try:
+        return abs(float(p) - float(g)) < 1e-6
+    except Exception:
+        return False
+
+
 def compute_score(solution_str, ground_truth, method="strict", format_score=0.0, score=1.0):
     """The scoring function for GSM8k.
 
@@ -61,12 +95,18 @@ def compute_score(solution_str, ground_truth, method="strict", format_score=0.0,
         method: the method to extract the solution, choices are 'strict' and 'flexible'
         format_score: the score for the format
         score: the score for the correct answer
+
+    Notes:
+        For method='strict', if no #### answer is found we also accept \\boxed{...}.
+        Qwen-family chat models often ignore the verl #### instruction and box instead;
+        without this fallback, training reward collapses to ~0 despite correct math.
     """
     answer = extract_solution(solution_str=solution_str, method=method)
+    if answer is None and method == "strict":
+        answer = _extract_boxed_numeric(solution_str)
     if answer is None:
         return 0
-    else:
-        if answer == ground_truth:
-            return score
-        else:
-            return format_score
+    if _answers_equal(answer, ground_truth):
+        return score
+    # Format present but wrong: keep upstream format_score semantics for ####-style extracts.
+    return format_score

@@ -31,6 +31,36 @@ def values_to_success(values, reward_range: str = "pm1"):
     raise ValueError(f"Unknown CSPD reward_range={reward_range!r}; expected 'pm1' or '01'")
 
 
+def rerank_posterior_candidates(
+    candidate_logp: torch.Tensor,
+    candidate_ids: torch.Tensor,
+    successor_values: torch.Tensor,
+    selected_mask: torch.Tensor,
+    retain_k: int,
+    reward_range: str = "pm1",
+):
+    """Proposal stage 2: retain K candidates by ``pi(a|s) * Q(s,a)``.
+
+    Stage 1 is the policy top-K0 represented by the input tensors.  Unselected
+    prefixes keep the first K policy candidates because their outputs are masked
+    later; this avoids arbitrary ties from their zero-filled successor values.
+    """
+    candidate_k0 = candidate_logp.size(-1)
+    if not 0 < retain_k <= candidate_k0:
+        raise ValueError(f"retain_k must be in [1, {candidate_k0}], got {retain_k}")
+    success = values_to_success(successor_values, reward_range)
+    posterior_mass = candidate_logp.float().exp() * success
+    reranked_positions = posterior_mass.topk(retain_k, dim=-1).indices
+    policy_positions = torch.arange(retain_k, device=candidate_logp.device)
+    policy_positions = policy_positions.view(*([1] * (candidate_logp.ndim - 1)), retain_k)
+    policy_positions = policy_positions.expand_as(reranked_positions)
+    positions = torch.where(selected_mask.bool().unsqueeze(-1), reranked_positions, policy_positions)
+    retained_logp = candidate_logp.gather(-1, positions)
+    retained_ids = candidate_ids.gather(-1, positions)
+    retained_values = successor_values.gather(-1, positions)
+    return retained_logp, retained_ids, retained_values, positions, posterior_mass
+
+
 def build_success_posterior(
     behavior_logp,
     successor_values,

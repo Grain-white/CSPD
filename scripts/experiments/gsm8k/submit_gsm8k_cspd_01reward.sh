@@ -39,4 +39,4 @@ TRAIN_BATCH_SIZE=32 \
 ROLLOUT_N=8 \
 GPU_MEM_UTIL=0.55 \
 CSPD_REWARD_RANGE=01 \
-${ROOT}/run_math_ppo_cspd.sh cspd'"
+${ROOT}/scripts/training/run_math_ppo_cspd.sh cspd'"

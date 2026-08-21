@@ -56,7 +56,11 @@ pairwise contrastive CSPD derivations.
 | `sdpo_verl/verl/trainer/ppo/core_algos.py` | Registers `loss_mode=cspd`. |
 | `sdpo_verl/verl/workers/actor/dp_actor.py` | Gathers student top-K probabilities and reports actor gradient diagnostics. |
 | `sdpo_verl/tests/trainer/ppo/test_cspd.py` | Canonical CSPD regression tests. |
-| `run_math_ppo_cspd.sh` | Shared PPO/CSPD training entrypoint. |
+| `scripts/training/run_math_ppo_cspd.sh` | Shared PPO/CSPD training entrypoint. |
+| `scripts/experiments/` | Slurm submission scripts grouped by experiment family. |
+| `scripts/evaluation/` | Checkpoint and merged-model evaluation jobs. |
+| `scripts/diagnostics/` | One-GPU smoke tests and posterior/dataset probes. |
+| `scripts/monitoring/` | Queue, accounting, and log inspection helpers. |
 | `data/` | DAPO-Math-17K materialization and checksum; parquet is not tracked. |
 | `output/` | Checkpoints, logs, and Hugging Face caches; not tracked. |
 | `swanlog/` | SwanLab local files; not tracked. |
@@ -95,7 +99,7 @@ total steps             300
 ```
 
 These can be overridden through environment variables accepted by
-`run_math_ppo_cspd.sh`.
+`scripts/training/run_math_ppo_cspd.sh`.
 
 ## Tests
 
@@ -107,6 +111,7 @@ export PYTHONPATH=$PWD/sdpo_verl:$PWD
 
 python -m pytest -q \
   sdpo_verl/tests/trainer/ppo/test_cspd.py \
+  test_cspd_bce_topk.py \
   test_cspd_value_scale.py \
   test_root_cspd_import.py
 ```
@@ -116,7 +121,7 @@ The current expected result is `10 passed`.
 Syntax-only checks:
 
 ```bash
-bash -n run_math_ppo_cspd.sh submit_comparison.sh submit_cspd_valueprobfix.sh
+bash -n scripts/training/run_math_ppo_cspd.sh scripts/experiments/general/submit_comparison.sh scripts/experiments/general/submit_cspd_valueprobfix.sh
 python -m py_compile \
   sdpo_verl/verl/trainer/ppo/cspd.py \
   sdpo_verl/verl/trainer/ppo/ray_trainer.py \
@@ -129,11 +134,11 @@ python -m py_compile \
 salloc --partition=a01 --nodes=1 --ntasks=1 --gres=gpu:1 \
   --cpus-per-task=8 --mem=120G --time=02:00:00
 
-srun bash debug_1gpu.sh cspd
-srun bash debug_1gpu.sh ppo
+srun bash scripts/diagnostics/debug_1gpu.sh cspd
+srun bash scripts/diagnostics/debug_1gpu.sh ppo
 ```
 
-`debug_1gpu.sh` disables validation, checkpointing, and SwanLab; uses a small
+`scripts/diagnostics/debug_1gpu.sh` disables validation, checkpointing, and SwanLab; uses a small
 batch, short responses, two candidates, and two prefixes; and runs one step.
 
 ## Training commands
@@ -141,8 +146,8 @@ batch, short responses, two candidates, and two prefixes; and runs one step.
 ### Run directly inside an allocation
 
 ```bash
-bash run_math_ppo_cspd.sh ppo
-bash run_math_ppo_cspd.sh cspd
+bash scripts/training/run_math_ppo_cspd.sh ppo
+bash scripts/training/run_math_ppo_cspd.sh cspd
 ```
 
 Example CSPD overrides:
@@ -155,12 +160,12 @@ TEST_FREQ=5 \
 VAL_N=12 \
 CSPD_TOPK=8 \
 CSPD_PREFIXES=8 \
-bash run_math_ppo_cspd.sh cspd
+bash scripts/training/run_math_ppo_cspd.sh cspd
 ```
 
 ### Submit matched PPO and CSPD
 
-`submit_comparison.sh` submits two independent four-GPU jobs and does not
+`scripts/experiments/general/submit_comparison.sh` submits two independent four-GPU jobs and does not
 cancel existing jobs:
 
 ```bash
@@ -170,13 +175,13 @@ TOTAL_TRAINING_STEPS=300 \
 SAVE_FREQ=50 \
 TEST_FREQ=5 \
 VAL_N=12 \
-bash submit_comparison.sh
+bash scripts/experiments/general/submit_comparison.sh
 ```
 
 ### Submit corrected CSPD with gradient diagnostics
 
 ```bash
-bash submit_cspd_valueprobfix.sh
+bash scripts/experiments/general/submit_cspd_valueprobfix.sh
 ```
 
 This submits only CSPD with the corrected signed-value conversion, 300 steps,
@@ -203,19 +208,19 @@ CSPD loss by `1 / std(raw_GAE)`; the actual loss remains unchanged.
 Step-zero verifier smoke:
 
 ```bash
-bash submit_verify_v3.sh
+bash scripts/diagnostics/submit_verify_v3.sh
 ```
 
 Evaluate the hard-coded PPO and CSPD step-300 trainer checkpoints:
 
 ```bash
-bash submit_eval_ckpts_v3.sh
+bash scripts/evaluation/submit_eval_ckpts_v3.sh
 ```
 
 Evaluate the hard-coded PPO Hugging Face actor checkpoint:
 
 ```bash
-bash submit_eval_ppo_retry_v3.sh
+bash scripts/evaluation/submit_eval_ppo_retry_v3.sh
 ```
 
 This legacy retry disables resume and SwanLab and runs validation only. Inspect
@@ -224,7 +229,7 @@ its checkpoint path before reuse.
 Evaluate the hard-coded merged PPO actor:
 
 ```bash
-bash submit_eval_ppo_merged_v4.sh
+bash scripts/evaluation/submit_eval_ppo_merged_v4.sh
 ```
 
 This checks for `model.safetensors`, disables the critic, and runs validation
@@ -233,9 +238,9 @@ only. Inspect the model path before reuse.
 ## Monitoring and result extraction
 
 ```bash
-bash inspect_slurm_jobs.sh JOB_ID [JOB_ID ...]
-bash check_training_queue.sh JOB_ID [JOB_ID ...]
-bash check_eval_status.sh JOB_ID
+bash scripts/monitoring/inspect_slurm_jobs.sh JOB_ID [JOB_ID ...]
+bash scripts/monitoring/check_training_queue.sh JOB_ID [JOB_ID ...]
+bash scripts/monitoring/check_eval_status.sh JOB_ID
 
 perl extract_val_progress.pl output/EXPERIMENT/train.log
 perl summarize_training_reward.pl output/EXPERIMENT/train.log
@@ -266,18 +271,26 @@ sha256sum -c data/dapo-math-17k-seed42.sha256
 
 | Script | Effect |
 | --- | --- |
-| `run_math_ppo_cspd.sh` | Shared training/validation entrypoint; takes `ppo` or `cspd`. |
-| `debug_1gpu.sh` | One-step one-GPU smoke configuration without save, validation, or SwanLab. |
-| `submit_comparison.sh` | Submits matched four-GPU PPO and CSPD jobs; does not cancel jobs. |
-| `submit_cspd_valueprobfix.sh` | Submits the latest corrected CSPD diagnostic job only. |
-| `submit_verify_v3.sh` | Submits a step-zero/validation verifier smoke. |
-| `submit_eval_ckpts_v3.sh` | Evaluates hard-coded step-300 PPO and CSPD trainer checkpoints. |
-| `submit_eval_ppo_retry_v3.sh` | Legacy validation-only retry using a hard-coded PPO HF actor. |
-| `submit_eval_ppo_merged_v4.sh` | Validation-only run for a hard-coded merged PPO actor. |
-| `inspect_slurm_jobs.sh` | Shows detailed Slurm configuration and accounting for job IDs. |
-| `check_training_queue.sh` | Shows queue, start estimates, priority, and partition nodes. |
-| `check_eval_status.sh` | Shows queue/accounting/log tail for one legacy evaluation job. |
-| `resubmit_comparison_2d.sh` | **Legacy/destructive:** may cancel only hard-coded pending jobs `461081` and `461082`, then submits a historical comparison. Do not reuse without reviewing it. |
+| `scripts/training/run_math_ppo_cspd.sh` | Shared training/validation entrypoint; takes `ppo` or `cspd`. |
+| `scripts/diagnostics/debug_1gpu.sh` | One-step one-GPU smoke configuration without save, validation, or SwanLab. |
+| `scripts/diagnostics/probe_dataset_passrate.sbatch` | Measures dataset pass rates with the configured model and verifier. |
+| `scripts/diagnostics/run_*_probe*_salloc.sh` | Runs GT-posterior, mass-update, and two-stage top-K diagnostics. |
+| `scripts/experiments/general/submit_comparison.sh` | Submits matched four-GPU PPO and CSPD jobs; does not cancel jobs. |
+| `scripts/experiments/general/submit_cspd_valueprobfix.sh` | Submits the latest corrected CSPD diagnostic job only. |
+| `scripts/experiments/gsm8k/submit_gsm8k_bce_twostage_quick.sh` | Submits matched 20-step GSM8K BCE-critic PPO/CSPD runs; CSPD uses K0-to-K reranking. |
+| `scripts/experiments/gsm8k/submit_gsm8k_cspd_01reward.sh` | Submits the corrected 0/1-reward GSM8K CSPD experiment. |
+| `scripts/experiments/gsm8k/submit_gsm8k_ppo_criticcheck.sh` | Submits matched GSM8K PPO/CSPD critic diagnostics. |
+| `scripts/experiments/gsm8k/smoke_gsm8k_bce_twostage_1gpu.sh` | Exercises BCE critic and two-stage selection for one step on one GPU. |
+| `scripts/experiments/math/submit_math75k_comparison.sh` | Submits matched Math-75K PPO/CSPD runs. |
+| `scripts/experiments/math/submit_grpo_dapo17k_math75k.sh` | Submits GRPO dataset-control runs on DAPO-17K and Math-75K. |
+| `scripts/diagnostics/submit_verify_v3.sh` | Submits a step-zero/validation verifier smoke. |
+| `scripts/evaluation/submit_eval_ckpts_v3.sh` | Evaluates hard-coded step-300 PPO and CSPD trainer checkpoints. |
+| `scripts/evaluation/submit_eval_ppo_retry_v3.sh` | Legacy validation-only retry using a hard-coded PPO HF actor. |
+| `scripts/evaluation/submit_eval_ppo_merged_v4.sh` | Validation-only run for a hard-coded merged PPO actor. |
+| `scripts/monitoring/inspect_slurm_jobs.sh` | Shows detailed Slurm configuration and accounting for job IDs. |
+| `scripts/monitoring/check_training_queue.sh` | Shows queue, start estimates, priority, and partition nodes. |
+| `scripts/monitoring/check_eval_status.sh` | Shows queue/accounting/log tail for one legacy evaluation job. |
+| `scripts/legacy/resubmit_comparison_2d.sh` | **Legacy/destructive:** may cancel only hard-coded pending jobs `461081` and `461082`, then submits a historical comparison. Do not reuse without reviewing it. |
 
 ## Output locations
 

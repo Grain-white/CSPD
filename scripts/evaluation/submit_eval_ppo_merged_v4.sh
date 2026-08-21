@@ -22,4 +22,4 @@ sbatch \
   --time=02:00:00 \
   --output="${ROOT}/output/logs/%j-eval-ppo-v4.log" \
   --error="${ROOT}/output/logs/%j-eval-ppo-v4.err" \
-  --wrap="srun bash -lc 'MODEL_PATH=${MODEL} EXP_NAME=${EXP} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/run_math_ppo_cspd.sh ppo trainer.resume_mode=disable trainer.val_only=True algorithm.adv_estimator=grpo critic.enable=False'"
+  --wrap="srun bash -lc 'MODEL_PATH=${MODEL} EXP_NAME=${EXP} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/scripts/training/run_math_ppo_cspd.sh ppo trainer.resume_mode=disable trainer.val_only=True algorithm.adv_estimator=grpo critic.enable=False'"

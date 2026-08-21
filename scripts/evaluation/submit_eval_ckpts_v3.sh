@@ -13,5 +13,5 @@ for method in ppo cspd; do
     --mem=460000 --cpus-per-task=32 \
     --output="${ROOT}/output/logs/%j-eval-${method}-v3.log" \
     --error="${ROOT}/output/logs/%j-eval-${method}-v3.err" \
-    --wrap="srun bash -lc 'EXP_NAME=${exp} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/run_math_ppo_cspd.sh ${method} trainer.resume_mode=resume_path trainer.resume_from_path=${ckpt} trainer.val_only=True'"
+    --wrap="srun bash -lc 'EXP_NAME=${exp} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/scripts/training/run_math_ppo_cspd.sh ${method} trainer.resume_mode=resume_path trainer.resume_from_path=${ckpt} trainer.val_only=True'"
 done

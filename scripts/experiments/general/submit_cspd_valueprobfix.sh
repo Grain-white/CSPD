@@ -16,4 +16,4 @@ sbatch \
   --cpus-per-task=32 \
   --output="${ROOT}/output/logs/%j-cspd-valueprobfix-diag.log" \
   --error="${ROOT}/output/logs/%j-cspd-valueprobfix-diag.err" \
-  --wrap="srun bash -lc 'EXP_NAME=${EXP_NAME} TOTAL_TRAINING_STEPS=300 SAVE_FREQ=50 TEST_FREQ=5 VAL_N=12 ${ROOT}/run_math_ppo_cspd.sh cspd'"
+  --wrap="srun bash -lc 'EXP_NAME=${EXP_NAME} TOTAL_TRAINING_STEPS=300 SAVE_FREQ=50 TEST_FREQ=5 VAL_N=12 ${ROOT}/scripts/training/run_math_ppo_cspd.sh cspd'"

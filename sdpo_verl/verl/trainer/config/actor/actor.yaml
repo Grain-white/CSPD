@@ -77,6 +77,8 @@ policy_loss:
 
   # CSPD (optional; also overridable via + overrides)
   cspd_topk: 8
+  # First select policy top-K0, then retain cspd_topk by pi(a|s) * Q(s,a).
+  cspd_proposal_topk: 8
   cspd_prefixes_per_response: 8
   # pm1: {-1,+1} rewards; 01: {0,1} rewards (e.g. GSM8K)
   cspd_reward_range: pm1

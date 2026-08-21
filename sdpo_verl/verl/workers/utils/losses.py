@@ -17,7 +17,13 @@ import torch
 import torch.nn.functional as F
 from tensordict import TensorDict
 
-from verl.trainer.ppo.core_algos import agg_loss, compute_value_loss, get_policy_loss_fn, kl_penalty
+from verl.trainer.ppo.core_algos import (
+    agg_loss,
+    compute_binary_value_loss,
+    compute_value_loss,
+    get_policy_loss_fn,
+    kl_penalty,
+)
 from verl.utils import tensordict_utils as tu
 from verl.utils.dataset.dataset_utils import DatasetPadMode
 from verl.utils.metric import AggregationType, Metric
@@ -186,20 +192,30 @@ def value_loss(config: CriticConfig, model_output, data: TensorDict, dp_group=No
     Returns:
         value loss
     """
-    vpreds = _slice_response_from_unpad_output(model_output["values"], data)  # (bsz, response_length)
+    raw_vpreds = _slice_response_from_unpad_output(model_output["values"], data)  # (bsz, response_length)
 
     values = data["values"]
     returns = data["returns"]
     response_mask = data["response_mask"].to(bool)
 
-    vf_loss, vf_clipfrac = compute_value_loss(
-        vpreds=vpreds,
-        values=values,
-        returns=returns,
-        response_mask=response_mask,
-        cliprange_value=config.cliprange_value,
-        loss_agg_mode=config.loss_agg_mode,
-    )
+    if config.value_loss_type == "bce":
+        vf_loss, vpreds, brier, target_oob_fraction = compute_binary_value_loss(
+            logits=raw_vpreds,
+            returns=returns,
+            response_mask=response_mask,
+            loss_agg_mode=config.loss_agg_mode,
+        )
+        vf_clipfrac = raw_vpreds.new_zeros(())
+    else:
+        vpreds = raw_vpreds
+        vf_loss, vf_clipfrac = compute_value_loss(
+            vpreds=vpreds,
+            values=values,
+            returns=returns,
+            response_mask=response_mask,
+            cliprange_value=config.cliprange_value,
+            loss_agg_mode=config.loss_agg_mode,
+        )
 
     metrics = {}
 
@@ -210,5 +226,13 @@ def value_loss(config: CriticConfig, model_output, data: TensorDict, dp_group=No
             "critic/vpred_mean": masked_mean(vpreds, response_mask).detach().item(),
         }
     )
+    if config.value_loss_type == "bce":
+        metrics.update(
+            {
+                "critic/vpred_logit_mean": masked_mean(raw_vpreds, response_mask).detach().item(),
+                "critic/brier": brier.detach().item(),
+                "critic/bce_target_oob_fraction": target_oob_fraction.detach().item(),
+            }
+        )
 
     return vf_loss, metrics

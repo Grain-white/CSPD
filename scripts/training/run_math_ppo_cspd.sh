@@ -111,6 +111,7 @@ python -m verl.trainer.main_ppo \
   actor_rollout_ref.actor.entropy_coeff=0 \
   actor_rollout_ref.actor.policy_loss.loss_mode="${LOSS_MODE}" \
   actor_rollout_ref.actor.policy_loss.cspd_topk="${CSPD_TOPK:-8}" \
+  actor_rollout_ref.actor.policy_loss.cspd_proposal_topk="${CSPD_PROPOSAL_TOPK:-${CSPD_TOPK:-8}}" \
   actor_rollout_ref.actor.policy_loss.cspd_prefixes_per_response="${CSPD_PREFIXES:-8}" \
   actor_rollout_ref.actor.policy_loss.cspd_reward_range="${CSPD_REWARD_RANGE:-pm1}" \
   actor_rollout_ref.actor.fsdp_config.model_dtype=bfloat16 \
@@ -140,6 +141,7 @@ python -m verl.trainer.main_ppo \
   critic.model.use_remove_padding=True \
   critic.model.enable_gradient_checkpointing=True \
   critic.optim.lr=1e-5 \
+  critic.value_loss_type="${CRITIC_LOSS_TYPE:-mse}" \
   critic.ppo_mini_batch_size="${TRAIN_BATCH}" \
   critic.ppo_micro_batch_size_per_gpu=1 \
   critic.ppo_epochs="${PPO_EPOCHS}" \

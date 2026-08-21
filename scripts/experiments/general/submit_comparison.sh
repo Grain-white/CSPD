@@ -8,5 +8,5 @@ for method in ppo cspd; do
     --time="${TIME_LIMIT:-16-00:00:00}" --ntasks-per-node=1 --gpus-per-node=4 \
     --mem="${MEM:-460000}" --cpus-per-task="${CPUS_PER_TASK:-32}" \
     --output="${ROOT}/output/logs/%j-${method}.log" --error="${ROOT}/output/logs/%j-${method}.err" \
-    --wrap="srun bash -lc 'EXP_NAME=CSPD-${method}-qwen3-1.7b-seed42-${TAG} ${ROOT}/run_math_ppo_cspd.sh ${method}'"
+    --wrap="srun bash -lc 'EXP_NAME=CSPD-${method}-qwen3-1.7b-seed42-${TAG} ${ROOT}/scripts/training/run_math_ppo_cspd.sh ${method}'"
 done

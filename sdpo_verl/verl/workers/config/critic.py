@@ -49,6 +49,8 @@ class CriticConfig(BaseConfig):
         ppo_epochs (int): Number of PPO epochs per batch.
         shuffle (bool): Shuffle training data across PPO epochs.
         cliprange_value (float): PPO value function clipping range.
+        value_loss_type (str): ``mse`` for PPO clipped regression or ``bce``
+            for a Bernoulli success-probability critic.
         loss_agg_mode (str): Loss aggregation mode.
         checkpoint (Dict[str, Any]): Checkpoint configuration.
         profiler (Dict[str, Any]): Profiler configuration.
@@ -77,6 +79,7 @@ class CriticConfig(BaseConfig):
     data_loader_seed: int = 1
     shuffle: bool = True
     cliprange_value: float = 0.5
+    value_loss_type: str = "mse"
     loss_agg_mode: str = "token-mean"
     ppo_micro_batch_size: Optional[int] = None
     engine: BaseConfig = field(default_factory=BaseConfig)
@@ -90,6 +93,10 @@ class CriticConfig(BaseConfig):
     def __post_init__(self):
         """Validate critic configuration parameters."""
         assert self.strategy != MISSING
+        if self.value_loss_type not in {"mse", "bce"}:
+            raise ValueError(
+                f"critic.value_loss_type must be 'mse' or 'bce', got {self.value_loss_type!r}"
+            )
 
         if self.model_config is None:
             warnings.warn("using model in Critic Config is deprecated, please use model_config instead", stacklevel=2)

@@ -3,6 +3,10 @@ output/
 outputs/
 swanlog/
 data/*.parquet
+data/**/*.parquet
+data/**/.hfd/
+data/**/.done
+/data/probe_sets/
 *.safetensors
 *.ckpt
 *.pt

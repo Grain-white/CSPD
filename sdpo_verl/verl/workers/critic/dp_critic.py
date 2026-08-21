@@ -50,6 +50,10 @@ class DataParallelPPOCritic(BasePPOCritic):
         self.ulysses_sequence_parallel_size = self.config.get("ulysses_sequence_parallel_size", 1)
         self.device_name = get_device_name()
 
+    @property
+    def use_binary_value_loss(self) -> bool:
+        return str(self.config.get("value_loss_type", "mse")) == "bce"
+
     def _forward_micro_batch(self, micro_batch):
         response_length = micro_batch["responses"].size(-1)
         multi_modal_inputs = {}
@@ -176,6 +180,8 @@ class DataParallelPPOCritic(BasePPOCritic):
             model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch}
             with torch.no_grad():
                 values = self._forward_micro_batch(model_inputs)
+                if self.use_binary_value_loss:
+                    values = values.float().sigmoid()
             values_lst.append(values)
         values = torch.concat(values_lst, dim=0)
 
@@ -227,15 +233,25 @@ class DataParallelPPOCritic(BasePPOCritic):
                     values = model_inputs["values"]
                     returns = model_inputs["returns"]
 
-                    vpreds = self._forward_micro_batch(model_inputs)
-                    vf_loss, vf_clipfrac = core_algos.compute_value_loss(
-                        vpreds=vpreds,
-                        values=values,
-                        returns=returns,
-                        response_mask=response_mask,
-                        cliprange_value=self.config.cliprange_value,
-                        loss_agg_mode=self.config.loss_agg_mode,
-                    )
+                    raw_vpreds = self._forward_micro_batch(model_inputs)
+                    if self.use_binary_value_loss:
+                        vf_loss, vpreds, brier, target_oob_fraction = core_algos.compute_binary_value_loss(
+                            logits=raw_vpreds,
+                            returns=returns,
+                            response_mask=response_mask,
+                            loss_agg_mode=self.config.loss_agg_mode,
+                        )
+                        vf_clipfrac = raw_vpreds.new_zeros(())
+                    else:
+                        vpreds = raw_vpreds
+                        vf_loss, vf_clipfrac = core_algos.compute_value_loss(
+                            vpreds=vpreds,
+                            values=values,
+                            returns=returns,
+                            response_mask=response_mask,
+                            cliprange_value=self.config.cliprange_value,
+                            loss_agg_mode=self.config.loss_agg_mode,
+                        )
                     if self.config.use_dynamic_bsz:
                         # relative to the dynamic bsz
                         loss_scale_factor = response_mask.shape[0] / self.config.ppo_mini_batch_size
@@ -252,6 +268,14 @@ class DataParallelPPOCritic(BasePPOCritic):
                             "critic/vpred_mean": masked_mean(vpreds, response_mask).detach().item(),
                         }
                     )
+                    if self.use_binary_value_loss:
+                        micro_batch_metrics.update(
+                            {
+                                "critic/vpred_logit_mean": masked_mean(raw_vpreds, response_mask).detach().item(),
+                                "critic/brier": brier.detach().item(),
+                                "critic/bce_target_oob_fraction": target_oob_fraction.detach().item(),
+                            }
+                        )
 
                     metrics["critic/vf_loss"] += vf_loss.detach().item() * loss_scale_factor
                     append_to_dict(metrics, micro_batch_metrics)

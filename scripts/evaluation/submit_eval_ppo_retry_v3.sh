@@ -19,4 +19,4 @@ sbatch \
   --cpus-per-task=32 \
   --time=02:00:00 \
   --output=${ROOT}/output/logs/%j-eval-ppo-v3-retry.log \
-  --wrap="srun bash -lc 'DISABLE_SWANLAB=1 TRAIN_LOG=/tmp/eval-ppo-v3-retry.log MODEL_PATH=${CKPT} EXP_NAME=${EXP} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/run_math_ppo_cspd.sh ppo trainer.resume_mode=disable trainer.val_only=True'"
+  --wrap="srun bash -lc 'DISABLE_SWANLAB=1 TRAIN_LOG=/tmp/eval-ppo-v3-retry.log MODEL_PATH=${CKPT} EXP_NAME=${EXP} SAVE_FREQ=-1 TEST_FREQ=-1 ${ROOT}/scripts/training/run_math_ppo_cspd.sh ppo trainer.resume_mode=disable trainer.val_only=True'"

@@ -79,6 +79,10 @@ data_loader_seed: 42
 # PPO value function clipping range
 cliprange_value: 0.5
 
+# mse: clipped PPO value regression; bce: Bernoulli success critic.  In BCE
+# mode the model emits logits and all externally visible values are sigmoid(logit).
+value_loss_type: mse
+
 # Loss aggregation mode: "token-mean", "seq-mean-token-sum", or "seq-mean-token-mean"
 loss_agg_mode: ${oc.select:actor_rollout_ref.actor.loss_agg_mode,token-mean}
 
@@ -176,4 +180,3 @@ profiler:
 
       # Stack trace depth for memory allocations
       stack_depth: ${oc.select:global_profiler.global_tool_config.torch_memory.stack_depth,32}
-      
